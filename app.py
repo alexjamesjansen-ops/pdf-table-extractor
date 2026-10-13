@@ -10,8 +10,8 @@ import zipfile
 # ============================================================
 
 st.set_page_config(
-    page_title="TableFlow",
-    page_icon="📄",
+    page_title="TabXtract",
+    page_icon="🔭",
     layout="wide"
 )
 
@@ -69,7 +69,7 @@ st.markdown(
 # ============================================================
 
 st.markdown(
-    '<div class="title">📄 TableFlow</div>',
+    '<div class="title">🔭 TabXtract</div>',
     unsafe_allow_html=True
 )
 
