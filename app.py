@@ -69,7 +69,7 @@ st.markdown(
 # ============================================================
 
 st.markdown(
-    '<div class="title">🔭 TabXtract</div>',
+    '<div class="title">TabXtract</div>',
     unsafe_allow_html=True
 )
 
