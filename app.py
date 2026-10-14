@@ -25,20 +25,28 @@ st.markdown(
     <style>
 
     .main {
-        background-color: #f8f9fa;
+        background-color: #f8fafc;
+    }
+
+    .block-container {
+        padding-top: 2.5rem;
+        padding-bottom: 3rem;
+        max-width: 1200px;
     }
 
     .title {
-        font-size: 38px;
-        font-weight: 700;
-        color: #1f2937;
-        margin-bottom: 5px;
+        font-size: 42px;
+        font-weight: 750;
+        letter-spacing: -1.5px;
+        color: #0f172a;
+        margin-bottom: 8px;
     }
 
     .subtitle {
         font-size: 17px;
-        color: #6b7280;
-        margin-bottom: 30px;
+        line-height: 1.6;
+        color: #64748b;
+        margin-bottom: 32px;
     }
 
     .step-number {
@@ -49,13 +57,14 @@ st.markdown(
 
     .step-title {
         font-size: 18px;
-        font-weight: 600;
-        color: #1f2937;
+        font-weight: 650;
+        color: #0f172a;
     }
 
     .step-text {
         font-size: 14px;
-        color: #6b7280;
+        line-height: 1.6;
+        color: #64748b;
     }
 
     </style>
