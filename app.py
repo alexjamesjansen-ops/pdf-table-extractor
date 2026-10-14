@@ -421,5 +421,5 @@ if "tables" in st.session_state:
 st.divider()
 
 st.caption(
-    "PDF Table Extractor • Convert PDF tables to CSV"
+    "TabXtract • Simple, reliable PDF table extraction"
 )
