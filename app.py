@@ -216,13 +216,18 @@ def extract_tables_from_pdf(pdf_file):
 # FILE UPLOAD
 # ============================================================
 
-st.subheader("Upload a PDF")
+st.subheader("Start with your PDF")
 
-uploaded_file = st.file_uploader(
-    "Choose a PDF file",
-    type=["pdf"]
+st.caption(
+    "Choose a PDF document containing tables. "
+    "TabXtract will extract the detected tables for you to review."
 )
 
+uploaded_file = st.file_uploader(
+    "Upload your PDF document",
+    type=["pdf"],
+    help="Select a PDF file from your computer."
+)
 
 # ============================================================
 # EXTRACT TABLES
