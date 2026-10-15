@@ -98,6 +98,66 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# ============================================================
+# STRIPE CHECKOUT
+# ============================================================
+
+st.markdown("### Try TabXtract Pro")
+
+st.write(
+    "Start with a 7-day free trial, then $10/month "
+    "for unlimited PDF table extraction."
+)
+
+if st.button(
+    "Start Your 7-Day Free Trial",
+    type="primary",
+    use_container_width=True
+):
+    if not stripe.api_key or not STRIPE_PRICE_ID:
+        st.error(
+            "Subscription checkout is not configured. "
+            "Please try again later."
+        )
+    else:
+        try:
+            checkout_session = stripe.checkout.Session.create(
+                mode="subscription",
+                line_items=[
+                    {
+                        "price": STRIPE_PRICE_ID,
+                        "quantity": 1,
+                    }
+                ],
+                subscription_data={
+                    "trial_period_days": 7,
+                },
+                success_url=(
+                    "https://tabxtract.com/?checkout=success"
+                ),
+                cancel_url=(
+                    "https://tabxtract.com/?checkout=cancelled"
+                ),
+            )
+
+            st.session_state["stripe_checkout_url"] = (
+                checkout_session.url
+            )
+
+        except Exception:
+            st.error(
+                "We couldn't start checkout. "
+                "Please try again later."
+            )
+
+if st.session_state.get("stripe_checkout_url"):
+    st.link_button(
+        "Continue to Secure Stripe Checkout",
+        st.session_state["stripe_checkout_url"],
+        use_container_width=True,
+    )
+
+st.divider()
 
 # ============================================================
 # HOW IT WORKS
