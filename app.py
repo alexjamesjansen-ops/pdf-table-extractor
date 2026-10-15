@@ -123,6 +123,7 @@ if st.button(
         try:
             checkout_session = stripe.checkout.Session.create(
                 mode="subscription",
+                managed_payments={"enabled": False},
                 line_items=[
                     {
                         "price": STRIPE_PRICE_ID,
