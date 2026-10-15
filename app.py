@@ -143,9 +143,9 @@ if st.button(
             st.session_state["stripe_checkout_url"] = (
                 checkout_session.url
             )
-except Exception as e:
-    st.error(
-        f"Checkout error: {type(e).__name__}: {e}"
+        except Exception as e:
+            st.error(
+                f"Checkout error: {type(e).__name__}: {e}"
     )
 
 if st.session_state.get("stripe_checkout_url"):
