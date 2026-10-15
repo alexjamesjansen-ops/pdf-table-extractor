@@ -144,11 +144,10 @@ if st.button(
                 checkout_session.url
             )
 
-        except Exception:
-            st.error(
-                "We couldn't start checkout. "
-                "Please try again later."
-            )
+        except Exception as e:
+    st.error(
+        f"Checkout error: {type(e).__name__}: {e}"
+    )
 
 if st.session_state.get("stripe_checkout_url"):
     st.link_button(
