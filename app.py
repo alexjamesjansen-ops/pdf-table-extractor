@@ -3,7 +3,16 @@ import pdfplumber
 import pandas as pd
 import io
 import zipfile
+import os
+import stripe
 
+# ============================================================
+# STRIPE CONFIGURATION
+# ============================================================
+
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID")
 
 # ============================================================
 # PAGE SETUP
