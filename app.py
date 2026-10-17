@@ -26,6 +26,24 @@ st.set_page_config(
     layout="wide"
 )
 
+# ============================================================
+# SUPABASE CONFIGURATION
+# ============================================================
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error(
+        "Account services are not configured. "
+        "Please try again later."
+    )
+    st.stop()
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_KEY
+)
 
 # ============================================================
 # SIMPLE STYLING
