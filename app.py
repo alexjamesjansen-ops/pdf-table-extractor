@@ -5,6 +5,8 @@ import io
 import zipfile
 import os
 import stripe
+from supabase import create_client
+
 
 # ============================================================
 # STRIPE CONFIGURATION
