@@ -289,24 +289,30 @@ if st.button(
     else:
         try:
             checkout_session = stripe.checkout.Session.create(
-                mode="subscription",
-                managed_payments={"enabled": False},
-                line_items=[
-                    {
-                        "price": STRIPE_PRICE_ID,
-                        "quantity": 1,
-                    }
-                ],
-                subscription_data={
-                    "trial_period_days": 7,
-                },
-                success_url=(
-                    "https://tabxtract.com/?checkout=success"
-                ),
-                cancel_url=(
-                    "https://tabxtract.com/?checkout=cancelled"
-                ),
-            )
+    mode="subscription",
+    managed_payments={"enabled": False},
+    client_reference_id=st.session_state["supabase_user"]["id"],
+    customer_email=st.session_state["supabase_user"]["email"],
+    line_items=[
+        {
+            "price": STRIPE_PRICE_ID,
+            "quantity": 1,
+        }
+    ],
+    subscription_data={
+        "trial_period_days": 7,
+        "metadata": {
+            "supabase_user_id": (
+                st.session_state["supabase_user"]["id"]
+            ),
+        },
+    },
+    success_url=(
+        "https://tabxtract.com/"
+        "?checkout=success&session_id={CHECKOUT_SESSION_ID}"
+    ),
+    cancel_url="https://tabxtract.com/?checkout=cancelled",
+)
 
             st.session_state["stripe_checkout_url"] = (
                 checkout_session.url
