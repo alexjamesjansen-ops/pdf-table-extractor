@@ -46,6 +46,153 @@ supabase = create_client(
 )
 
 # ============================================================
+# USER SIGN-UP AND LOGIN
+# ============================================================
+
+if "supabase_access_token" not in st.session_state:
+    st.session_state["supabase_access_token"] = None
+    st.session_state["supabase_refresh_token"] = None
+    st.session_state["supabase_user"] = None
+
+# Restore the user's Supabase session after app reruns.
+if st.session_state["supabase_access_token"]:
+    try:
+        auth_response = supabase.auth.set_session(
+            st.session_state["supabase_access_token"],
+            st.session_state["supabase_refresh_token"],
+        )
+
+        if auth_response.session:
+            st.session_state["supabase_access_token"] = (
+                auth_response.session.access_token
+            )
+            st.session_state["supabase_refresh_token"] = (
+                auth_response.session.refresh_token
+            )
+
+    except Exception:
+        st.session_state["supabase_access_token"] = None
+        st.session_state["supabase_refresh_token"] = None
+        st.session_state["supabase_user"] = None
+
+# Show login and sign-up forms when logged out.
+if not st.session_state["supabase_user"]:
+    st.title("Welcome to TabXtract")
+    st.write("Create an account or log in to continue.")
+
+    signup_tab, login_tab = st.tabs(
+        ["Create Account", "Log In"]
+    )
+
+    with signup_tab:
+        with st.form("signup_form"):
+            signup_email = st.text_input("Email address")
+            signup_password = st.text_input(
+                "Password",
+                type="password",
+            )
+            signup_submit = st.form_submit_button(
+                "Create Account",
+                use_container_width=True,
+            )
+
+        if signup_submit:
+            if not signup_email or not signup_password:
+                st.error("Enter your email and password.")
+            elif len(signup_password) < 8:
+                st.error("Your password must be at least 8 characters.")
+            else:
+                try:
+                    response = supabase.auth.sign_up({
+                        "email": signup_email,
+                        "password": signup_password,
+                    })
+
+                    if response.session and response.user:
+                        st.session_state["supabase_access_token"] = (
+                            response.session.access_token
+                        )
+                        st.session_state["supabase_refresh_token"] = (
+                            response.session.refresh_token
+                        )
+                        st.session_state["supabase_user"] = {
+                            "id": response.user.id,
+                            "email": response.user.email,
+                        }
+                        st.rerun()
+                    else:
+                        st.success(
+                            "Account request received. Check your email "
+                            "to verify your account, then log in."
+                        )
+
+                except Exception:
+                    st.error(
+                        "We couldn't create your account. "
+                        "Check your details or try logging in."
+                    )
+
+    with login_tab:
+        with st.form("login_form"):
+            login_email = st.text_input("Email address", key="login_email")
+            login_password = st.text_input(
+                "Password",
+                type="password",
+                key="login_password",
+            )
+            login_submit = st.form_submit_button(
+                "Log In",
+                use_container_width=True,
+            )
+
+        if login_submit:
+            try:
+                response = supabase.auth.sign_in_with_password({
+                    "email": login_email,
+                    "password": login_password,
+                })
+
+                if response.session and response.user:
+                    st.session_state["supabase_access_token"] = (
+                        response.session.access_token
+                    )
+                    st.session_state["supabase_refresh_token"] = (
+                        response.session.refresh_token
+                    )
+                    st.session_state["supabase_user"] = {
+                        "id": response.user.id,
+                        "email": response.user.email,
+                    }
+                    st.rerun()
+                else:
+                    st.error("Login failed. Please try again.")
+
+            except Exception:
+                st.error(
+                    "Login failed. Check your email and password, "
+                    "and verify your email if required."
+                )
+
+    # Prevent access to the rest of the app while logged out.
+    st.stop()
+
+# Show the signed-in user's account controls.
+st.sidebar.caption(
+    f"Logged in as: {st.session_state['supabase_user']['email']}"
+)
+
+if st.sidebar.button("Log Out"):
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+
+    st.session_state["supabase_access_token"] = None
+    st.session_state["supabase_refresh_token"] = None
+    st.session_state["supabase_user"] = None
+    st.rerun()
+
+# ============================================================
 # SIMPLE STYLING
 # ============================================================
 
