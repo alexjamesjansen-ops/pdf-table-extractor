@@ -1,20 +1,139 @@
+
+import os
+import io
+import zipfile
+import traceback
+
 import streamlit as st
 import pdfplumber
 import pandas as pd
-import io
-import zipfile
-import os
-import traceback
 import stripe
-
-
 from supabase import create_client
 
-stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+
+# --------------------------------------------------
+# CONFIGURATION
+# --------------------------------------------------
+
+st.set_page_config(
+    page_title="TabXtract",
+    page_icon="🔭",
+    layout="wide",
+)
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    st.error("Supabase configuration is missing. Check your Render environment variables.")
+    st.stop()
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+
+
+# --------------------------------------------------
+# STYLING
+# --------------------------------------------------
+
+st.markdown(
+    """
+    <style>
+    .main {
+        background-color: #f8f9fa;
+    }
+
+    .block-container {
+        max-width: 1100px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+
+    .tabx-title {
+        font-size: 2.7rem;
+        font-weight: 750;
+        color: #16324f;
+        margin-bottom: 0.15rem;
+    }
+
+    .tabx-subtitle {
+        font-size: 1.1rem;
+        color: #526477;
+        margin-bottom: 1.5rem;
+    }
+
+    .step-number {
+        color: #1976d2;
+        font-weight: 750;
+    }
+
+    div[data-testid="stFileUploader"] {
+        background-color: white;
+        border-radius: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# --------------------------------------------------
+# SESSION STATE
+# --------------------------------------------------
+
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+
+if "auth_mode" not in st.session_state:
+    st.session_state["auth_mode"] = "Log in"
+
+
+def set_user_from_response(response):
+    """Save the authenticated user in Streamlit session state."""
+    user = getattr(response, "user", None)
+
+    if user is not None:
+        st.session_state["user"] = {
+            "id": user.id,
+            "email": user.email,
+        }
+
+
+def restore_session():
+    """Restore an existing Supabase session when available."""
+    if st.session_state["user"] is not None:
+        return
+
+    try:
+        response = supabase.auth.get_session()
+        session = getattr(response, "session", None)
+
+        if session is not None and session.user is not None:
+            st.session_state["user"] = {
+                "id": session.user.id,
+                "email": session.user.email,
+            }
+    except Exception:
+        # A missing session simply means the user needs to log in.
+        pass
+
+
+# --------------------------------------------------
+# STRIPE CHECKOUT
+# --------------------------------------------------
 
 def create_checkout_session(user_id, user_email):
+    """Create a Stripe subscription checkout with a 7-day trial."""
+    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+        raise ValueError(
+            "Stripe is not configured. Check STRIPE_SECRET_KEY "
+            "and STRIPE_PRICE_ID in Render."
+        )
+
     session = stripe.checkout.Session.create(
         mode="subscription",
         payment_method_collection="always",
@@ -39,492 +158,247 @@ def create_checkout_session(user_id, user_email):
     return session.url
 
 
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
-
-st.set_page_config(
-    page_title="TabXtract",
-    page_icon="🔭",
-    layout="wide",
-)
-
-
-# ============================================================
-# SUPABASE CONFIGURATION
-# ============================================================
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    st.error(
-        "Account services are not configured. "
-        "Please try again later."
-    )
-    st.stop()
-
-try:
-    supabase = create_client(
-        SUPABASE_URL,
-        SUPABASE_KEY,
-    )
-except Exception:
-    st.error(
-        "We couldn't connect to the account service. "
-        "Please try again later."
-    )
-    print("TabXtract Supabase initialization error:")
-    traceback.print_exc()
-    st.stop()
-
-
-# ============================================================
-# SESSION STATE
-# ============================================================
-
-if "supabase_access_token" not in st.session_state:
-    st.session_state["supabase_access_token"] = None
-
-if "supabase_refresh_token" not in st.session_state:
-    st.session_state["supabase_refresh_token"] = None
-
-if "supabase_user" not in st.session_state:
-    st.session_state["supabase_user"] = None
-
-if "tables" not in st.session_state:
-    st.session_state["tables"] = []
-
-
-# ============================================================
-# RESTORE LOGIN SESSION
-# ============================================================
-
-if (
-    st.session_state["supabase_access_token"]
-    and st.session_state["supabase_refresh_token"]
-):
-    try:
-        auth_response = supabase.auth.set_session(
-            st.session_state["supabase_access_token"],
-            st.session_state["supabase_refresh_token"],
-        )
-
-        if auth_response and auth_response.session:
-
-            st.session_state["supabase_access_token"] = (
-                auth_response.session.access_token
-            )
-
-            st.session_state["supabase_refresh_token"] = (
-                auth_response.session.refresh_token
-            )
-
-            if auth_response.user:
-                st.session_state["supabase_user"] = {
-                    "id": auth_response.user.id,
-                    "email": auth_response.user.email,
-                }
-
-    except Exception:
-        print("TabXtract session restoration error:")
-        traceback.print_exc()
-
-        st.session_state["supabase_access_token"] = None
-        st.session_state["supabase_refresh_token"] = None
-        st.session_state["supabase_user"] = None
-
-
-# ============================================================
-# SIGN-UP AND LOGIN
-# ============================================================
-
-if not st.session_state["supabase_user"]:
-
-    st.title("Welcome to TabXtract")
-
-    st.write(
-        "Create an account or log in to extract tables "
-        "from your PDF documents."
-    )
-
-    signup_tab, login_tab = st.tabs(
-        ["Create Account", "Log In"]
-    )
-
-    # --------------------------------------------------------
-    # SIGN-UP
-    # --------------------------------------------------------
-
-    with signup_tab:
-
-        with st.form("signup_form"):
-
-            signup_email = st.text_input(
-                "Email address",
-                key="signup_email",
-            )
-
-            signup_password = st.text_input(
-                "Password",
-                type="password",
-                key="signup_password",
-            )
-
-            signup_submit = st.form_submit_button(
-                "Create Account",
-                use_container_width=True,
-            )
-
-        if signup_submit:
-
-            if not signup_email or not signup_password:
-
-                st.error(
-                    "Please enter your email and password."
-                )
-
-            elif len(signup_password) < 8:
-
-                st.error(
-                    "Your password must be at least 8 characters."
-                )
-
-            else:
-                try:
-                    response = supabase.auth.sign_up({
-                        "email": signup_email.strip(),
-                        "password": signup_password,
-                    })
-
-                    if (
-                        response
-                        and response.session
-                        and response.user
-                    ):
-
-                        st.session_state[
-                            "supabase_access_token"
-                        ] = response.session.access_token
-
-                        st.session_state[
-                            "supabase_refresh_token"
-                        ] = response.session.refresh_token
-
-                        st.session_state["supabase_user"] = {
-                            "id": response.user.id,
-                            "email": response.user.email,
-                        }
-
-                        st.rerun()
-
-                    else:
-                        st.success(
-                            "Your account request was received. "
-                            "Check your email for a confirmation "
-                            "link, then log in."
-                        )
-
-                except Exception:
-                    st.error(
-                        "We couldn't create your account. "
-                        "Check your details or try logging in."
-                    )
-
-                    print("TabXtract sign-up error:")
-                    traceback.print_exc()
-
-    # --------------------------------------------------------
-    # LOGIN
-    # --------------------------------------------------------
-
-    with login_tab:
-
-        with st.form("login_form"):
-
-            login_email = st.text_input(
-                "Email address",
-                key="login_email",
-            )
-
-            login_password = st.text_input(
-                "Password",
-                type="password",
-                key="login_password",
-            )
-
-            login_submit = st.form_submit_button(
-                "Log In",
-                use_container_width=True,
-            )
-
-        if login_submit:
-
-            if not login_email or not login_password:
-
-                st.error(
-                    "Please enter your email and password."
-                )
-
-            else:
-                try:
-                    response = (
-                        supabase.auth.sign_in_with_password({
-                            "email": login_email.strip(),
-                            "password": login_password,
-                        })
-                    )
-
-                    if (
-                        response
-                        and response.session
-                        and response.user
-                    ):
-
-                        st.session_state[
-                            "supabase_access_token"
-                        ] = response.session.access_token
-
-                        st.session_state[
-                            "supabase_refresh_token"
-                        ] = response.session.refresh_token
-
-                        st.session_state["supabase_user"] = {
-                            "id": response.user.id,
-                            "email": response.user.email,
-                        }
-
-                        st.rerun()
-
-                    else:
-                        st.error(
-                            "Login failed. Please try again."
-                        )
-
-                except Exception:
-                    st.error(
-                        "Login failed. Check your email and "
-                        "password, and confirm your email if required."
-                    )
-
-                    print("TabXtract login error:")
-                    traceback.print_exc()
-
-    st.stop()
-
-
-# ============================================================
-# LOGGED-IN USER
-# ============================================================
-
-current_user = st.session_state["supabase_user"]
-
-st.sidebar.caption(
-    f"Logged in as: {current_user['email']}"
-)
-
-if st.sidebar.button("Log Out"):
-
-    try:
-        supabase.auth.sign_out()
-    except Exception:
-        print("TabXtract logout notice:")
-        traceback.print_exc()
-
-    st.session_state["supabase_access_token"] = None
-    st.session_state["supabase_refresh_token"] = None
-    st.session_state["supabase_user"] = None
-    st.session_state["tables"] = []
-
-    st.rerun()
-
-
-# ============================================================
-# STYLING
-# ============================================================
-
-st.markdown(
-    """
-    <style>
-    .main {
-        background-color: #f8f9fa;
-    }
-
-    .block-container {
-        padding-top: 2.5rem;
-        padding-bottom: 3rem;
-        max-width: 1200px;
-    }
-
-    .title {
-        font-size: 42px;
-        font-weight: 750;
-        letter-spacing: -1.5px;
-        color: #0f172a;
-        margin-bottom: 8px;
-    }
-
-    .subtitle {
-        font-size: 17px;
-        line-height: 1.6;
-        color: #64748b;
-        margin-bottom: 32px;
-    }
-
-    .step-number {
-        font-size: 28px;
-        font-weight: 700;
-        color: #2563eb;
-    }
-
-    .step-title {
-        font-size: 18px;
-        font-weight: 650;
-        color: #0f172a;
-    }
-
-    .step-text {
-        font-size: 14px;
-        line-height: 1.6;
-        color: #64748b;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# HEADER
-# ============================================================
-
-st.markdown(
-    '<div class="title">TabXtract</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    '<div class="subtitle">'
-    'Extract tables from PDF files and convert them to CSV.'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-
-# ============================================================
-# HOW IT WORKS
-# ============================================================
-
-st.subheader("How it works")
-
-step1, step2, step3 = st.columns(3)
-
-with step1:
-
-    st.markdown(
-        '<div class="step-number">1</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="step-title">Upload</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="step-text">'
-        'Upload a PDF containing tables.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-with step2:
-
-    st.markdown(
-        '<div class="step-number">2</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="step-title">Extract</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="step-text">'
-        'Automatically find and extract the tables.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-with step3:
-
-    st.markdown(
-        '<div class="step-number">3</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="step-title">Download</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        '<div class="step-text">'
-        'Download your tables as CSV files.'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-st.divider()
-
-
-# ============================================================
-# PDF TABLE EXTRACTION FUNCTION
-# ============================================================
+# --------------------------------------------------
+# PDF EXTRACTION
+# --------------------------------------------------
 
 def extract_tables_from_pdf(pdf_file):
-
-    tables = []
+    """Extract tables from each page of an uploaded PDF."""
+    extracted_tables = []
 
     with pdfplumber.open(pdf_file) as pdf:
+        for page_number, page in enumerate(pdf.pages, start=1):
+            tables = page.extract_tables()
 
-        for page_number, page in enumerate(
-            pdf.pages,
-            start=1,
-        ):
-
-            page_tables = page.extract_tables()
-
-            for table_number, table in enumerate(
-                page_tables,
-                start=1,
-            ):
-
+            for table_number, table in enumerate(tables, start=1):
                 if not table:
                     continue
 
-                df = pd.DataFrame(table)
+                dataframe = pd.DataFrame(table)
 
                 # Remove completely empty rows and columns.
-                df = df.dropna(how="all")
-                df = df.dropna(axis=1, how="all")
+                dataframe = dataframe.dropna(how="all")
+                dataframe = dataframe.dropna(axis=1, how="all")
 
-                if df.empty:
+                # Remove rows and columns containing only blank strings.
+                dataframe = dataframe.replace(r"^\s*$", pd.NA, regex=True)
+                dataframe = dataframe.dropna(how="all")
+                dataframe = dataframe.dropna(axis=1, how="all")
+
+                if dataframe.empty:
                     continue
 
-                tables.append({
-                    "page": page_number,
-                    "table": table_number,
-                    "data": df,
-                })
+                extracted_tables.append(
+                    {
+                        "page": page_number,
+                        "table": table_number,
+                        "dataframe": dataframe,
+                    }
+                )
 
-    return tables
+    return extracted_tables
 
 
-# ============================================================
-# UPLOAD PDF
-# ============================================================
+def make_csv_bytes(dataframe):
+    """Convert a dataframe to downloadable UTF-8 CSV bytes."""
+    return dataframe.to_csv(index=False).encode("utf-8-sig")
+
+
+# --------------------------------------------------
+# LOGIN AND SIGNUP
+# --------------------------------------------------
+
+restore_session()
+
+if st.session_state["user"] is None:
+    st.markdown(
+        '<div class="tabx-title">🔭 TabXtract</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<div class="tabx-subtitle">'
+        "Extract tables from PDFs and turn them into downloadable CSV files."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
+    st.subheader("Welcome to TabXtract")
+
+    auth_mode = st.radio(
+        "Choose an option",
+        ["Log in", "Create account"],
+        horizontal=True,
+    )
+
+    with st.form("auth_form"):
+        email = st.text_input("Email address")
+        password = st.text_input("Password", type="password")
+
+        submit = st.form_submit_button(
+            "Log in" if auth_mode == "Log in" else "Create account",
+            use_container_width=True,
+        )
+
+    if submit:
+        if not email.strip() or not password:
+            st.error("Enter your email address and password.")
+        else:
+            try:
+                if auth_mode == "Log in":
+                    response = supabase.auth.sign_in_with_password(
+                        {
+                            "email": email.strip(),
+                            "password": password,
+                        }
+                    )
+
+                    set_user_from_response(response)
+
+                    if st.session_state["user"] is not None:
+                        st.success("Logged in successfully.")
+                        st.rerun()
+                    else:
+                        st.error("Login did not return a user. Please try again.")
+
+                else:
+                    response = supabase.auth.sign_up(
+                        {
+                            "email": email.strip(),
+                            "password": password,
+                        }
+                    )
+
+                    user = getattr(response, "user", None)
+                    session = getattr(response, "session", None)
+
+                    if user is not None and session is not None:
+                        st.session_state["user"] = {
+                            "id": user.id,
+                            "email": user.email,
+                        }
+                        st.success("Account created successfully.")
+                        st.rerun()
+                    elif user is not None:
+                        st.success(
+                            "Account created. Check your email for a "
+                            "confirmation link, then log in."
+                        )
+                    else:
+                        st.error("Account creation did not complete. Try again.")
+
+            except Exception:
+                st.error(
+                    "We couldn't complete that request. Check your details "
+                    "and try again. If the problem continues, check your "
+                    "Supabase authentication settings."
+                )
+
+    st.stop()
+
+
+# --------------------------------------------------
+# LOGGED-IN APPLICATION
+# --------------------------------------------------
+
+user = st.session_state["user"]
+
+with st.sidebar:
+    st.markdown("### 🔭 TabXtract")
+    st.caption(f"Logged in as {user['email']}")
+
+    st.divider()
+
+    st.markdown("### Subscription")
+    st.write("7-day free trial, then $10/month.")
+
+    if st.button("Start free trial", use_container_width=True):
+        try:
+            checkout_url = create_checkout_session(
+                user_id=user["id"],
+                user_email=user["email"],
+            )
+            st.markdown(
+                f"[Continue to secure Stripe checkout]({checkout_url})"
+            )
+        except Exception:
+            st.error(
+                "We couldn't start checkout. Please try again. "
+                "If the problem continues, check the Stripe configuration "
+                "in Render."
+            )
+
+    st.caption(
+        "Checkout is being tested. Subscription access restrictions "
+        "have not been enabled yet."
+    )
+
+    st.divider()
+
+    if st.button("Log out", use_container_width=True):
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+
+        st.session_state["user"] = None
+        st.rerun()
+
+
+# Show checkout return messages.
+checkout_status = st.query_params.get("checkout")
+
+if checkout_status == "success":
+    st.success(
+        "Stripe checkout completed. Subscription activation may take "
+        "a short time while the webhook updates your account."
+    )
+elif checkout_status == "cancelled":
+    st.info("Checkout was cancelled. You can try again whenever you're ready.")
+
+
+st.markdown(
+    '<div class="tabx-title">🔭 TabXtract</div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    '<div class="tabx-subtitle">'
+    "Upload a PDF, extract its tables, and download them as CSV files."
+    "</div>",
+    unsafe_allow_html=True,
+)
+
+st.divider()
+
+# Three-step instructions.
+step1, step2, step3 = st.columns(3)
+
+with step1:
+    st.markdown(
+        '<span class="step-number">STEP 1</span>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("**Upload your PDF**")
+    st.caption("Choose a PDF that contains tables.")
+
+with step2:
+    st.markdown(
+        '<span class="step-number">STEP 2</span>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("**Extract the tables**")
+    st.caption("TabXtract identifies tables on each page.")
+
+with step3:
+    st.markdown(
+        '<span class="step-number">STEP 3</span>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("**Download your CSV files**")
+    st.caption("Download individual tables or a ZIP archive.")
+
+st.divider()
 
 st.subheader("Start with your PDF")
 
@@ -539,189 +413,72 @@ uploaded_file = st.file_uploader(
     help="Select a PDF file from your computer.",
 )
 
+if uploaded_file is not None:
+    if st.button("Extract tables", type="primary", use_container_width=True):
+        try:
+            with st.spinner("Extracting tables from your PDF..."):
+                tables = extract_tables_from_pdf(uploaded_file)
 
-# ============================================================
-# EXTRACT TABLES
-# ============================================================
+            st.session_state["extracted_tables"] = tables
+            st.session_state["source_pdf_name"] = uploaded_file.name
 
-if uploaded_file:
+        except Exception:
+            st.error(
+                "We couldn't read this PDF. Try another PDF file."
+            )
+            st.code(traceback.format_exc())
 
-    st.success(
-        f"Uploaded: {uploaded_file.name}"
-    )
+    if "extracted_tables" in st.session_state:
+        tables = st.session_state["extracted_tables"]
 
-    if st.button(
-        "🔍 Extract Tables",
-        type="primary",
-    ):
+        if not tables:
+            st.warning(
+                "No tables were detected. Try a PDF with clearer table borders "
+                "or selectable text."
+            )
+        else:
+            st.success(f"Found {len(tables)} table(s).")
 
-        # Clear previous results before processing a new request.
-        st.session_state["tables"] = []
+            zip_buffer = io.BytesIO()
 
-        with st.spinner("Extracting tables..."):
+            with zipfile.ZipFile(
+                zip_buffer,
+                mode="w",
+                compression=zipfile.ZIP_DEFLATED,
+            ) as zip_file:
+                for index, item in enumerate(tables, start=1):
+                    csv_data = make_csv_bytes(item["dataframe"])
 
-            try:
-                tables = extract_tables_from_pdf(
-                    uploaded_file
-                )
-
-                if not tables:
-
-                    st.warning(
-                        "No tables were detected in this PDF. "
-                        "Try another document with clearer tables."
+                    filename = (
+                        f"page_{item['page']}_table_{item['table']}.csv"
                     )
 
-                else:
-                    st.session_state["tables"] = tables
-
-                    st.success(
-                        f"Successfully extracted "
-                        f"{len(tables)} table(s)."
+                    st.markdown(
+                        f"**Table {index} — Page {item['page']}**"
                     )
 
-            except Exception:
-                st.error(
-                    "An error occurred while processing this PDF. "
-                    "Please try another file."
-                )
+                    st.dataframe(
+                        item["dataframe"],
+                        use_container_width=True,
+                    )
 
-                print("TabXtract PDF extraction error:")
-                traceback.print_exc()
+                    st.download_button(
+                        label=f"Download Table {index} as CSV",
+                        data=csv_data,
+                        file_name=filename,
+                        mime="text/csv",
+                        key=f"csv_download_{index}",
+                    )
 
+                    zip_file.writestr(filename, csv_data)
 
-# ============================================================
-# DISPLAY EXTRACTED TABLES
-# ============================================================
+            st.divider()
 
-if st.session_state["tables"]:
-
-    tables = st.session_state["tables"]
-
-    st.subheader("Extracted Tables")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-
-        st.metric(
-            "Tables",
-            len(tables),
-        )
-
-    with col2:
-
-        total_rows = sum(
-            len(table["data"])
-            for table in tables
-        )
-
-        st.metric(
-            "Total Rows",
-            total_rows,
-        )
-
-    with col3:
-
-        total_pages = len({
-            table["page"]
-            for table in tables
-        })
-
-        st.metric(
-            "Pages With Tables",
-            total_pages,
-        )
-
-    st.divider()
-
-    for i, table_info in enumerate(tables):
-
-        page = table_info["page"]
-        table_number = table_info["table"]
-        df = table_info["data"]
-
-        st.markdown(
-            f"### Table {i + 1}"
-        )
-
-        st.caption(
-            f"Page {page} • Table {table_number}"
-        )
-
-        st.dataframe(
-            df,
-            use_container_width=True,
-        )
-
-        # Download each table as a CSV.
-        csv_data = df.to_csv(
-            index=False,
-            header=False,
-        ).encode("utf-8")
-
-        st.download_button(
-            label=f"⬇️ Download Table {i + 1} CSV",
-            data=csv_data,
-            file_name=(
-                f"table_page_{page}_{table_number}.csv"
-            ),
-            mime="text/csv",
-            key=f"download_table_{i}",
-        )
-
-        st.divider()
-
-    # ========================================================
-    # DOWNLOAD ALL TABLES AS ZIP
-    # ========================================================
-
-    st.subheader("Download All Tables")
-
-    zip_buffer = io.BytesIO()
-
-    with zipfile.ZipFile(
-        zip_buffer,
-        "w",
-        zipfile.ZIP_DEFLATED,
-    ) as zip_file:
-
-        for table_info in tables:
-
-            df = table_info["data"]
-            page = table_info["page"]
-            table_number = table_info["table"]
-
-            csv_data = df.to_csv(
-                index=False,
-                header=False,
+            st.download_button(
+                label="Download all tables as ZIP",
+                data=zip_buffer.getvalue(),
+                file_name="tabxtract_tables.zip",
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
             )
-
-            filename = (
-                f"table_page_{page}_{table_number}.csv"
-            )
-
-            zip_file.writestr(
-                filename,
-                csv_data,
-            )
-
-    zip_buffer.seek(0)
-
-    st.download_button(
-        label="📦 Download All Tables as ZIP",
-        data=zip_buffer,
-        file_name="extracted_tables.zip",
-        mime="application/zip",
-    )
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.divider()
-
-st.caption(
-    "TabXtract • Simple, reliable PDF table extraction"
-)
