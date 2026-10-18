@@ -5,6 +5,8 @@ import io
 import zipfile
 import os
 import traceback
+import stripe
+
 
 from supabase import create_client
 
