@@ -45,6 +45,23 @@ supabase = create_client(
     SUPABASE_KEY
 )
 
+# Private server-side connection for subscription management.
+SUPABASE_SERVICE_ROLE_KEY = os.getenv(
+    "SUPABASE_SERVICE_ROLE_KEY"
+)
+
+if not SUPABASE_SERVICE_ROLE_KEY:
+    st.error(
+        "Subscription services are not configured. "
+        "Please try again later."
+    )
+    st.stop()
+
+supabase_admin = create_client(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY
+)
+
 # ============================================================
 # USER SIGN-UP AND LOGIN
 # ============================================================
