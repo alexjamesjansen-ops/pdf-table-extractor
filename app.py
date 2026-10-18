@@ -13,6 +13,32 @@ from supabase import create_client
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 
+
+def create_checkout_session(user_id, user_email):
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        payment_method_collection="always",
+        line_items=[
+            {
+                "price": STRIPE_PRICE_ID,
+                "quantity": 1,
+            }
+        ],
+        customer_email=user_email,
+        client_reference_id=user_id,
+        subscription_data={
+            "trial_period_days": 7,
+            "metadata": {
+                "supabase_user_id": user_id,
+            },
+        },
+        success_url="https://tabxtract.com/?checkout=success",
+        cancel_url="https://tabxtract.com/?checkout=cancelled",
+    )
+
+    return session.url
+
+
 # ============================================================
 # PAGE CONFIGURATION
 # ============================================================
