@@ -301,9 +301,9 @@ if checkout_session_id:
             "Please contact support if the issue continues."
         )
 
-        print(
-            f"TabXtract checkout verification error: {error_id}"
-        )
+        import traceback
+        print("TabXtract checkout verification details:")
+        traceback.print_exc()
 
 # ============================================================
 # SIMPLE STYLING
