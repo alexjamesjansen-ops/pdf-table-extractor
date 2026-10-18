@@ -3,4 +3,4 @@ pdfplumber
 pandas
 stripe
 supabase
-stripe
+
