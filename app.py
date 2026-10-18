@@ -10,6 +10,8 @@ import stripe
 
 from supabase import create_client
 
+stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
+STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 
 # ============================================================
 # PAGE CONFIGURATION
