@@ -208,6 +208,96 @@ if st.sidebar.button("Log Out"):
     st.session_state["supabase_refresh_token"] = None
     st.session_state["supabase_user"] = None
     st.rerun()
+# ============================================================
+# VERIFY STRIPE CHECKOUT AND SAVE SUBSCRIPTION
+# ============================================================
+
+checkout_session_id = st.query_params.get("session_id")
+
+if checkout_session_id:
+    try:
+        user = st.session_state.get("supabase_user")
+
+        if not user:
+            st.error("Please log in to verify your subscription.")
+            st.stop()
+
+        # Retrieve the checkout directly from Stripe.
+        verified_checkout = stripe.checkout.Session.retrieve(
+            checkout_session_id
+        )
+
+        # Confirm this completed checkout belongs to this user.
+        if (
+            verified_checkout.status != "complete"
+            or verified_checkout.mode != "subscription"
+            or verified_checkout.client_reference_id != user["id"]
+        ):
+            st.error(
+                "We couldn't verify this checkout for your account."
+            )
+            st.stop()
+
+        subscription_id = verified_checkout.subscription
+
+        if not subscription_id:
+            st.error(
+                "No subscription was found for this checkout."
+            )
+            st.stop()
+
+        # Retrieve the actual subscription from Stripe.
+        subscription = stripe.Subscription.retrieve(
+            subscription_id
+        )
+
+        # Confirm the subscription metadata matches the logged-in user.
+        if (
+            subscription.metadata.get("supabase_user_id")
+            != user["id"]
+        ):
+            st.error(
+                "The subscription could not be matched to your account."
+            )
+            st.stop()
+
+        def stripe_date(timestamp):
+            if timestamp:
+                return datetime.fromtimestamp(
+                    timestamp,
+                    timezone.utc,
+                ).isoformat()
+            return None
+
+        # Save only details retrieved and verified through Stripe.
+        subscription_record = {
+            "user_id": user["id"],
+            "stripe_customer_id": str(
+                verified_checkout.customer
+            ),
+            "stripe_subscription_id": str(subscription.id),
+            "status": subscription.status,
+            "trial_end": stripe_date(subscription.trial_end),
+            "current_period_end": stripe_date(
+                subscription.current_period_end
+            ),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        supabase_admin.table("subscriptions").upsert(
+            subscription_record
+        ).execute()
+
+        st.query_params.clear()
+        st.success(
+            "Your subscription has been verified and saved."
+        )
+
+    except Exception:
+        st.error(
+            "We couldn't verify your subscription right now. "
+            "Please try again or contact support."
+        )
 
 # ============================================================
 # SIMPLE STYLING
