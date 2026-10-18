@@ -439,6 +439,66 @@ if st.session_state.get("stripe_checkout_url"):
 st.divider()
 
 # ============================================================
+# CHECK SUBSCRIPTION ACCESS
+# ============================================================
+
+current_user = st.session_state["supabase_user"]
+
+try:
+    result = (
+        supabase_admin.table("subscriptions")
+        .select("stripe_subscription_id,status")
+        .eq("user_id", current_user["id"])
+        .maybe_single()
+        .execute()
+    )
+
+    subscription_record = result.data
+
+    if subscription_record:
+        subscription_id = subscription_record.get(
+            "stripe_subscription_id"
+        )
+
+        if subscription_id:
+            # Check the current status directly with Stripe.
+            live_subscription = stripe.Subscription.retrieve(
+                subscription_id
+            )
+
+            current_status = live_subscription.status
+
+            if current_status != subscription_record["status"]:
+                supabase_admin.table("subscriptions").update({
+                    "status": current_status,
+                    "updated_at": datetime.now(
+                        timezone.utc
+                    ).isoformat(),
+                }).eq(
+                    "user_id", current_user["id"]
+                ).execute()
+
+        else:
+            current_status = "inactive"
+    else:
+        current_status = "inactive"
+
+except Exception:
+    st.error(
+        "We couldn't verify your subscription status. "
+        "Please refresh the page or try again later."
+    )
+    st.stop()
+
+if current_status not in ("trialing", "active"):
+    st.warning(
+        "A subscription is required to use PDF extraction. "
+        "Start your 7-day free trial above to continue."
+    )
+    st.stop()
+
+
+# ============================================================
 # HOW IT WORKS
 # ============================================================
 
