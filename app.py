@@ -293,7 +293,7 @@ if checkout_session_id:
             "Your subscription has been verified and saved."
         )
 
-     except Exception as e:
+    except Exception as e:
         error_id = type(e).__name__
 
         st.error(
