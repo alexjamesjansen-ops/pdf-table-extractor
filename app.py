@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 
 # ============================================================
-# PAGE SETUP
+# PAGE CONFIGURATION
 # ============================================================
 
 st.set_page_config(
@@ -71,6 +71,7 @@ supabase_admin = create_client(
 
 def get_field(obj, name, default=None):
     """Safely read a field from a Stripe response."""
+
     if obj is None:
         return default
 
@@ -83,7 +84,8 @@ def get_field(obj, name, default=None):
 
 
 def stripe_date(timestamp):
-    """Convert a Stripe timestamp to a UTC date string."""
+    """Convert a Stripe timestamp into a UTC date string."""
+
     if not timestamp:
         return None
 
@@ -94,13 +96,14 @@ def stripe_date(timestamp):
 
 
 def log_error(context):
-    """Write diagnostic information to Render logs."""
+    """Write detailed errors to the Render logs."""
+
     print(f"TabXtract {context} traceback:")
     traceback.print_exc()
 
 
 # ============================================================
-# USER SIGN-UP AND LOGIN
+# AUTHENTICATION SESSION
 # ============================================================
 
 if "supabase_access_token" not in st.session_state:
@@ -109,7 +112,7 @@ if "supabase_access_token" not in st.session_state:
     st.session_state["supabase_user"] = None
 
 
-# Restore the user's Supabase session.
+# Restore an existing login session.
 if (
     st.session_state["supabase_access_token"]
     and st.session_state["supabase_refresh_token"]
@@ -120,10 +123,12 @@ if (
             st.session_state["supabase_refresh_token"],
         )
 
-        if auth_response.session:
+        if auth_response and auth_response.session:
+
             st.session_state["supabase_access_token"] = (
                 auth_response.session.access_token
             )
+
             st.session_state["supabase_refresh_token"] = (
                 auth_response.session.refresh_token
             )
@@ -135,12 +140,18 @@ if (
                 }
 
     except Exception:
+        print("TabXtract login session restoration failed:")
+        traceback.print_exc()
+
         st.session_state["supabase_access_token"] = None
         st.session_state["supabase_refresh_token"] = None
         st.session_state["supabase_user"] = None
 
 
-# Show login and sign-up forms when logged out.
+# ============================================================
+# SIGN-UP AND LOGIN
+# ============================================================
+
 if not st.session_state["supabase_user"]:
 
     st.title("Welcome to TabXtract")
@@ -183,15 +194,18 @@ if not st.session_state["supabase_user"]:
                         "password": signup_password,
                     })
 
-                    if response.session and response.user:
+                    if (
+                        response
+                        and response.session
+                        and response.user
+                    ):
+                        st.session_state[
+                            "supabase_access_token"
+                        ] = response.session.access_token
 
-                        st.session_state["supabase_access_token"] = (
-                            response.session.access_token
-                        )
-
-                        st.session_state["supabase_refresh_token"] = (
-                            response.session.refresh_token
-                        )
+                        st.session_state[
+                            "supabase_refresh_token"
+                        ] = response.session.refresh_token
 
                         st.session_state["supabase_user"] = {
                             "id": response.user.id,
@@ -202,8 +216,8 @@ if not st.session_state["supabase_user"]:
 
                     else:
                         st.success(
-                            "Account request received. Check your email "
-                            "to verify your account, then log in."
+                            "Account request received. Check your "
+                            "email to verify your account, then log in."
                         )
 
                 except Exception:
@@ -211,6 +225,7 @@ if not st.session_state["supabase_user"]:
                         "We couldn't create your account. "
                         "Check your details or try logging in."
                     )
+                    log_error("sign-up")
 
     with login_tab:
 
@@ -240,15 +255,18 @@ if not st.session_state["supabase_user"]:
                     "password": login_password,
                 })
 
-                if response.session and response.user:
+                if (
+                    response
+                    and response.session
+                    and response.user
+                ):
+                    st.session_state[
+                        "supabase_access_token"
+                    ] = response.session.access_token
 
-                    st.session_state["supabase_access_token"] = (
-                        response.session.access_token
-                    )
-
-                    st.session_state["supabase_refresh_token"] = (
-                        response.session.refresh_token
-                    )
+                    st.session_state[
+                        "supabase_refresh_token"
+                    ] = response.session.refresh_token
 
                     st.session_state["supabase_user"] = {
                         "id": response.user.id,
@@ -265,11 +283,18 @@ if not st.session_state["supabase_user"]:
                     "Login failed. Check your email and password, "
                     "and verify your email if required."
                 )
+                log_error("login")
 
+
+# Stop here if the user is not logged in.
+if not st.session_state["supabase_user"]:
     st.stop()
 
 
-# Signed-in user's account controls.
+# ============================================================
+# ACCOUNT SIDEBAR
+# ============================================================
+
 current_user = st.session_state["supabase_user"]
 
 st.sidebar.caption(
@@ -291,7 +316,7 @@ if st.sidebar.button("Log Out"):
 
 
 # ============================================================
-# VERIFY STRIPE CHECKOUT AND SAVE SUBSCRIPTION
+# VERIFY STRIPE CHECKOUT
 # ============================================================
 
 checkout_session_id = st.query_params.get("session_id")
@@ -299,13 +324,10 @@ checkout_session_id = st.query_params.get("session_id")
 if checkout_session_id:
 
     try:
-        # Retrieve the checkout session from Stripe.
         checkout = stripe.checkout.Session.retrieve(
             checkout_session_id
         )
 
-        # Confirm this is a completed subscription checkout
-        # belonging to the signed-in user.
         if (
             get_field(checkout, "status") != "complete"
             or get_field(checkout, "mode") != "subscription"
@@ -328,13 +350,10 @@ if checkout_session_id:
             )
             st.stop()
 
-        # Stripe may return a subscription ID or an expanded object.
         if isinstance(subscription_value, str):
-
             subscription = stripe.Subscription.retrieve(
                 subscription_value
             )
-
         else:
             subscription = subscription_value
 
@@ -343,7 +362,6 @@ if checkout_session_id:
             "id",
         )
 
-        # Check the metadata added when checkout was created.
         metadata = get_field(
             subscription,
             "metadata",
@@ -359,55 +377,56 @@ if checkout_session_id:
             )
             st.stop()
 
-        # Some fields are optional depending on the Stripe API version.
-        # Missing optional date fields should not cause AttributeError.
-        trial_end = get_field(
-            subscription,
-            "trial_end",
-        )
-
-        current_period_end = get_field(
-            subscription,
-            "current_period_end",
-        )
-
-        customer_id = get_field(
-            checkout,
-            "customer",
-        )
+        customer_id = get_field(checkout, "customer")
 
         if not customer_id:
-            customer_id = get_field(
-                subscription,
-                "customer",
-            )
+            customer_id = get_field(subscription, "customer")
 
         subscription_record = {
             "user_id": current_user["id"],
             "stripe_customer_id": (
                 str(customer_id) if customer_id else None
             ),
-            "stripe_subscription_id": str(subscription_id),
+            "stripe_subscription_id": (
+                str(subscription_id)
+                if subscription_id
+                else None
+            ),
             "status": get_field(
                 subscription,
                 "status",
                 "inactive",
             ),
-            "trial_end": stripe_date(trial_end),
+            "trial_end": stripe_date(
+                get_field(subscription, "trial_end")
+            ),
             "current_period_end": stripe_date(
-                current_period_end
+                get_field(subscription, "current_period_end")
             ),
             "updated_at": datetime.now(
                 timezone.utc
             ).isoformat(),
         }
 
-        # Save the verified subscription to Supabase.
-        supabase_admin.table("subscriptions").upsert(
-            subscription_record
-        ).execute()
+        if not subscription_record["stripe_subscription_id"]:
+            st.error(
+                "Stripe did not return a subscription ID. "
+                "Please contact support."
+            )
+            st.stop()
 
-        # Only clear the URL after saving succeeds.
+        save_result = (
+            supabase_admin.table("subscriptions")
+            .upsert(subscription_record)
+            .execute()
+        )
+
+        if save_result is None:
+            raise RuntimeError(
+                "Supabase returned no response while saving "
+                "the subscription."
+            )
+
         st.query_params.clear()
 
         st.success(
@@ -419,19 +438,18 @@ if checkout_session_id:
             "Subscription verification failed. "
             "Please refresh the page or contact support."
         )
-
         log_error("checkout verification")
 
 
 # ============================================================
-# STYLING
+# PAGE STYLING
 # ============================================================
 
 st.markdown(
     """
     <style>
     .main {
-        background-color: #f8fafc;
+        background-color: #f8f9fa;
     }
 
     .block-container {
@@ -494,9 +512,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # ============================================================
-# STRIPE CHECKOUT
+# STRIPE CHECKOUT BUTTON
 # ============================================================
 
 st.markdown("### Try TabXtract Pro")
@@ -555,7 +572,6 @@ if st.button(
             st.error(
                 "We couldn't start checkout. Please try again later."
             )
-
             log_error("checkout creation")
 
 
@@ -585,7 +601,13 @@ try:
         .execute()
     )
 
-    subscription_record = result.data
+    # Handle a missing result instead of accessing .data blindly.
+    if result is None:
+        raise RuntimeError(
+            "Supabase returned no response for the subscription query."
+        )
+
+    subscription_record = getattr(result, "data", None)
 
     if subscription_record:
 
@@ -595,7 +617,6 @@ try:
 
         if subscription_id:
 
-            # Ask Stripe for the current subscription status.
             live_subscription = stripe.Subscription.retrieve(
                 subscription_id
             )
@@ -606,29 +627,42 @@ try:
                 "inactive",
             )
 
-            # Keep the saved status synchronized with Stripe.
-            if current_status != subscription_record.get("status"):
+            saved_status = subscription_record.get("status")
 
-                supabase_admin.table("subscriptions").update({
-                    "status": current_status,
-                    "updated_at": datetime.now(
-                        timezone.utc
-                    ).isoformat(),
-                }).eq(
-                    "user_id",
-                    current_user["id"],
-                ).execute()
+            if current_status != saved_status:
+
+                (
+                    supabase_admin.table("subscriptions")
+                    .update({
+                        "status": current_status,
+                        "updated_at": datetime.now(
+                            timezone.utc
+                        ).isoformat(),
+                    })
+                    .eq(
+                        "user_id",
+                        current_user["id"],
+                    )
+                    .execute()
+                )
+
+        else:
+            current_status = "inactive"
+
+    else:
+        # No subscription record exists for this user.
+        current_status = "inactive"
 
 except Exception:
     st.error(
         "We couldn't verify your subscription status. "
         "Please refresh the page or try again later."
     )
-
     log_error("subscription access check")
     st.stop()
 
 
+# Only active subscriptions and trials can use extraction.
 if current_status not in ("trialing", "active"):
 
     st.warning(
@@ -741,7 +775,7 @@ def extract_tables_from_pdf(pdf_file):
 
 
 # ============================================================
-# FILE UPLOAD
+# UPLOAD PDF
 # ============================================================
 
 st.subheader("Start with your PDF")
@@ -777,6 +811,8 @@ if uploaded_file:
 
                 if not tables:
 
+                    st.session_state.pop("tables", None)
+
                     st.warning(
                         "No tables were detected in this PDF."
                     )
@@ -793,15 +829,14 @@ if uploaded_file:
                     "An error occurred while processing the PDF. "
                     "Please try another file."
                 )
-
                 log_error("PDF extraction")
 
 
 # ============================================================
-# DISPLAY RESULTS
+# DISPLAY TABLES AND DOWNLOADS
 # ============================================================
 
-if "tables" in st.session_state:
+if st.session_state.get("tables"):
 
     tables = st.session_state["tables"]
 
@@ -860,10 +895,7 @@ if "tables" in st.session_state:
 
         st.divider()
 
-    # ========================================================
-    # DOWNLOAD ALL TABLES
-    # ========================================================
-
+    # Create a ZIP containing every extracted table.
     st.subheader("Download All Tables")
 
     zip_buffer = io.BytesIO()
