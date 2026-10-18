@@ -293,10 +293,16 @@ if checkout_session_id:
             "Your subscription has been verified and saved."
         )
 
-    except Exception:
+     except Exception as e:
+        error_id = type(e).__name__
+
         st.error(
-            "We couldn't verify your subscription right now. "
-            "Please try again or contact support."
+            f"Subscription verification failed ({error_id}). "
+            "Please contact support if the issue continues."
+        )
+
+        print(
+            f"TabXtract checkout verification error: {error_id}"
         )
 
 # ============================================================
